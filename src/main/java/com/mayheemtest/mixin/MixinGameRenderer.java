@@ -2,64 +2,64 @@ package com.mayheemtest.mixin;
 
 import com.mayheemtest.module.ModuleManager;
 import com.mayheemtest.module.impl.HitboxModule;
-import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.render.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * When HitboxModule is armed (active == true), temporarily adds the configured
- * offset to the player's yaw and pitch immediately before the game performs
- * its crosshair ray-cast / entity interaction check.
+ * MixinGameRenderer
  *
- * The offset is applied to player.setYaw / player.setPitch, which is what
- * the interaction manager reads when it sends the UseEntity packet.
- * We restore the original values in the same injection point's tail so the
- * visual camera is never actually moved.
+ * Hooks into GameRenderer#renderWorld (the outermost per-frame render call)
+ * rather than the renamed updateTargetedEntity method.
  *
- * Injection target: GameRenderer.updateTargetedEntity – called once per tick
- * to determine what the crosshair is pointing at.  By shifting yaw/pitch here,
- * the server receives an attack whose look-vector is offset by spoofYaw/spoofPitch
- * degrees from where the entity actually is.
+ * When HitboxModule is armed we shift yaw/pitch before the frame renders
+ * (which includes the crosshair ray-cast that decides what entity is targeted),
+ * then restore them immediately after so the camera never visually moves.
+ *
+ * yarn 1.21.11+build.6 name: method_3194  →  renderWorld(RenderTickCounter)
  */
 @Mixin(GameRenderer.class)
 public class MixinGameRenderer {
 
-    @Inject(method = "updateTargetedEntity", at = @At("HEAD"))
-    private void preLookSpoof(float tickDelta, CallbackInfo ci) {
+    @Inject(
+        method = "renderWorld",
+        at = @At("HEAD")
+    )
+    private void preLookSpoof(CallbackInfo ci) {
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
 
         HitboxModule hitbox = mgr.hitbox;
         if (!hitbox.isEnabled() || !hitbox.active) return;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null) return;
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null) return;
 
-        // Shift look before vanilla reads it for the interaction ray-cast
-        mc.player.setYaw(mc.player.getYaw() + hitbox.spoofYaw);
-        mc.player.setPitch(mc.player.getPitch() + hitbox.spoofPitch);
+        player.setYaw(player.getYaw() + hitbox.spoofYaw);
+        player.setPitch(player.getPitch() + hitbox.spoofPitch);
     }
 
-    @Inject(method = "updateTargetedEntity", at = @At("RETURN"))
-    private void postLookRestore(float tickDelta, CallbackInfo ci) {
+    @Inject(
+        method = "renderWorld",
+        at = @At("RETURN")
+    )
+    private void postLookRestore(CallbackInfo ci) {
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
 
         HitboxModule hitbox = mgr.hitbox;
-        // Restore only if we actually shifted (active flag was set)
         if (!hitbox.isEnabled() || !hitbox.active) return;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null) return;
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null) return;
 
-        // Undo the spoof so the visual camera stays correct
-        mc.player.setYaw(mc.player.getYaw() - hitbox.spoofYaw);
-        mc.player.setPitch(mc.player.getPitch() - hitbox.spoofPitch);
+        player.setYaw(player.getYaw() - hitbox.spoofYaw);
+        player.setPitch(player.getPitch() - hitbox.spoofPitch);
 
-        // Disarm so subsequent ticks don't reapply until the next attack
         hitbox.disarmSpoof();
     }
 }
