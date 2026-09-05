@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -17,12 +18,23 @@ import org.lwjgl.glfw.GLFW;
  * 1. Instantiate the ModuleManager (which registers all modules).
  * 2. Register the GUI keybind (Right Shift by default).
  * 3. Open the ClickGUI when the keybind is pressed.
+ *
+ * NOTE (1.21.11 API update)
+ * ─────────────────────────
+ *  In Minecraft 1.21.11, the KeyBinding constructor's category parameter
+ *  changed from a raw String to a KeyBinding.Category record (wrapping an
+ *  Identifier).  Use KeyBinding.Category.create(Identifier) to obtain one,
+ *  or new KeyBinding.Category(Identifier) directly.
  */
 public class MayheemTestMod implements ClientModInitializer {
 
     public static ModuleManager moduleManager;
 
     private static KeyBinding guiKeybind;
+
+    // Custom keybind category for this mod (1.21.11: Category is a record, not a String)
+    public static final KeyBinding.Category CATEGORY =
+            KeyBinding.Category.create(Identifier.of("mayheemtest", "general"));
 
     @Override
     public void onInitializeClient() {
@@ -34,7 +46,7 @@ public class MayheemTestMod implements ClientModInitializer {
                 "key.mayheemtest.gui",          // translation key
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_RIGHT_SHIFT,
-                "category.mayheemtest"          // category shown in controls menu
+                CATEGORY                        // category shown in controls menu
         ));
 
         // 3. Open GUI on keybind press
