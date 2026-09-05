@@ -3,6 +3,7 @@ package com.mayheemtest.gui;
 import com.mayheemtest.module.AbstractModule;
 import com.mayheemtest.module.ModuleManager;
 import com.mayheemtest.module.setting.DoubleSetting;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
@@ -38,6 +39,19 @@ import java.util.List;
  *  Left-drag slider       → adjust setting value
  *  Right-click slider     → reset to default (not implemented here – easy add)
  *  Esc / keybind          → close panel
+ *
+ * NOTE (1.21.11 API update)
+ * ─────────────────────────
+ *  In Minecraft 1.21.11, ParentElement/Element replaced the old
+ *      mouseClicked(double, double, int)
+ *      mouseDragged(double, double, int, double, double)
+ *      mouseReleased(double, double, int)
+ *  signatures with:
+ *      mouseClicked(Click, boolean doubled)
+ *      mouseDragged(Click, double offsetX, double offsetY)
+ *      mouseReleased(Click)
+ *  where Click.x() / Click.y() give cursor position and Click.button()
+ *  gives the GLFW button code (0 = left, 1 = right, 2 = middle).
  */
 public class ClickGUI extends Screen {
 
@@ -189,11 +203,26 @@ public class ClickGUI extends Screen {
                 valueX, y + (SETTING_H - 8) / 2, COL_TEXT);
     }
 
-    // ── Input handling ───────────────────────────────────────────────────────
+    // ── Input handling (1.21.11 API) ─────────────────────────────────────────
+    //
+    // In 1.21.11, ParentElement replaced the old (double mouseX, double mouseY,
+    // int button) signatures with a Click record that bundles position + button
+    // info.  The button integer (GLFW button code) is accessed via click.button().
+    // 0 = left, 1 = right, 2 = middle.
+    //
+    // mouseClicked now also carries a boolean `doubled` for double-click detection.
+    // mouseDragged receives (Click, double offsetX, double offsetY) – the Click
+    // holds the *current* cursor position; offsetX/offsetY are the delta since
+    // the last drag event (we ignore them here and use click.x() directly).
+    // mouseReleased receives just the Click (no separate position args).
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+    public boolean mouseClicked(Click click, boolean doubled) {
+        // Only handle primary (left) button; delegate everything else to super.
+        if (click.button() != 0) return super.mouseClicked(click, doubled);
+
+        double mouseX = click.x();
+        double mouseY = click.y();
 
         List<AbstractModule> modules = ModuleManager.get().getModules();
         int curY = PANEL_Y + 20;
@@ -226,24 +255,23 @@ public class ClickGUI extends Screen {
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button,
-                                double deltaX, double deltaY) {
-        if (button == 0 && draggingSetting != null) {
-            float t = (float) ((mouseX - draggingSliderX) / SLIDER_W);
+    public boolean mouseDragged(Click click, double offsetX, double offsetY) {
+        if (click.button() == 0 && draggingSetting != null) {
+            float t = (float) ((click.x() - draggingSliderX) / SLIDER_W);
             draggingSetting.setNormalized(t);
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, offsetX, offsetY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0) draggingSetting = null;
-        return super.mouseReleased(mouseX, mouseY, button);
+    public boolean mouseReleased(Click click) {
+        if (click.button() == 0) draggingSetting = null;
+        return super.mouseReleased(click);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
