@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "mayheemtest",
+  "version": "${version}",
+  "name": "MayheemTest",
+  "description": "Private anticheat stress-testing mod for 1.21.11",
+  "authors": ["private"],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.mayheemtest.MayheemTestMod"
+    ]
+  },
+  "mixins": [
+    "mayheemtest.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

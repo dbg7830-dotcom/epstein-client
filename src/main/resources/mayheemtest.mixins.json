@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "com.mayheemtest.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "MixinPlayerAttack",
+    "MixinGameRenderer"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
