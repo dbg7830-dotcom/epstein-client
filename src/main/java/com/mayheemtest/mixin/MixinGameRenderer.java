@@ -14,22 +14,30 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * MixinGameRenderer (hooks attackEntity on ClientPlayerInteractionManager)
+ * MixinGameRenderer (hooks ClientPlayerInteractionManager#attackEntity)
  *
- * The correct way to spoof look direction for hitbox testing:
+ * Exploit analysis of Reach.java for hitbox bypass:
  *
- * Minecraft does NOT include yaw/pitch in the attack packet itself.
- * The server tracks the player's look direction from PlayerMove packets
- * sent separately each tick. So to make the server think you're looking
- * somewhere else when you attack, you must:
+ * The HITBOX result fires when minDistance == Double.MAX_VALUE, meaning
+ * the ray from eye position never intersects the target box at all.
  *
- *   1. Send a PlayerLook packet with the OFFSET rotation
- *   2. Send the attack packet  (attackEntity handles this)
- *   3. Send a PlayerLook packet RESTORING real rotation
+ * The check uses multiple look vectors:
+ *   - player.yaw / player.pitch       (current)
+ *   - player.lastYaw / player.pitch   (1.8+)
+ *   - player.lastYaw / player.lastPitch (1.9+)
  *
- * Steps 1 and 3 are done here wrapping attackEntity via HEAD/RETURN inject.
- * The server processes packets in order, so it sees: look(offset) → attack → look(real).
- * The anticheat reads the look that was active when the attack arrived = offset look.
+ * To trigger HITBOX reliably, ALL of these vectors must miss the hitbox.
+ * This means a small offset isn't enough at low levels — the check will
+ * find one of the other vectors that still hits.
+ *
+ * Strategy:
+ * - Send a look packet with offset rotation before the attack
+ * - The offset must be large enough that even with lastYaw/lastPitch
+ *   uncertainty window, none of the vectors intersect
+ * - Level 1: small offset, may still be caught by lastYaw fallback
+ * - Level 5: large enough that all vectors miss, guaranteed HITBOX flag
+ *
+ * After the attack we immediately send real rotation back.
  */
 @Mixin(ClientPlayerInteractionManager.class)
 public class MixinGameRenderer {
@@ -47,13 +55,14 @@ public class MixinGameRenderer {
 
         hitbox.armSpoof();
 
-        float spoofedYaw   = localPlayer.getYaw()   + hitbox.spoofYaw;
-        float spoofedPitch = localPlayer.getPitch()  + hitbox.spoofPitch;
-
-        // Send a look packet with the offset rotation BEFORE the attack packet
-        // The server will use this rotation when processing the attack
+        // Send spoofed look packet — server uses this for the attack ray
         localPlayer.networkHandler.sendPacket(
-            new PlayerMoveC2SPacket.LookAndOnGround(spoofedYaw, spoofedPitch, localPlayer.isOnGround(), localPlayer.horizontalCollision)
+            new PlayerMoveC2SPacket.LookAndOnGround(
+                localPlayer.getYaw()   + hitbox.spoofYaw,
+                localPlayer.getPitch() + hitbox.spoofPitch,
+                localPlayer.isOnGround(),
+                localPlayer.horizontalCollision
+            )
         );
     }
 
@@ -68,9 +77,14 @@ public class MixinGameRenderer {
         ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
         if (localPlayer == null) return;
 
-        // Immediately send real rotation back so movement stays correct
+        // Restore real rotation immediately after
         localPlayer.networkHandler.sendPacket(
-            new PlayerMoveC2SPacket.LookAndOnGround(localPlayer.getYaw(), localPlayer.getPitch(), localPlayer.isOnGround(), localPlayer.horizontalCollision)
+            new PlayerMoveC2SPacket.LookAndOnGround(
+                localPlayer.getYaw(),
+                localPlayer.getPitch(),
+                localPlayer.isOnGround(),
+                localPlayer.horizontalCollision
+            )
         );
 
         hitbox.disarmSpoof();
