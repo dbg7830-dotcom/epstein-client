@@ -1,5 +1,6 @@
 package com.mayheemtest.module.impl;
 
+import com.mayheemtest.command.FriendManager;
 import com.mayheemtest.module.AbstractModule;
 import com.mayheemtest.module.setting.DoubleSetting;
 import net.minecraft.client.MinecraftClient;
@@ -11,14 +12,8 @@ import net.minecraft.util.math.Vec3d;
 /**
  * ReachModule
  *
- * When enabled, the attack mixin will call attemptAttack() targeting the
- * nearest living player within the configured reach distance rather than
- * requiring the player to be within vanilla crosshair range.
- *
- * Settings
- * ─────────
- * distance  – Maximum attack range in blocks (3.0 vanilla, up to 6.0)
- * This directly tests the server anticheat's Reach check threshold.
+ * Attacks the nearest player within the configured distance.
+ * Skips anyone on the FriendManager whitelist entirely.
  */
 public class ReachModule extends AbstractModule {
 
@@ -33,9 +28,8 @@ public class ReachModule extends AbstractModule {
     }
 
     /**
-     * Returns the nearest PlayerEntity within distance.getValue() blocks,
-     * excluding the local player. Called every tick by the mixin when enabled.
-     * Returns null if no valid target is found.
+     * Returns the nearest non-whitelisted PlayerEntity within range.
+     * Returns null if no valid target found.
      */
     public PlayerEntity findTarget() {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -43,6 +37,7 @@ public class ReachModule extends AbstractModule {
 
         double range = distance.getValue();
         Vec3d eyePos = mc.player.getEyePos();
+        FriendManager friends = FriendManager.get();
 
         PlayerEntity nearest = null;
         double nearestDist = Double.MAX_VALUE;
@@ -52,8 +47,9 @@ public class ReachModule extends AbstractModule {
             if (target == mc.player) continue;
             if (target.isDead() || target.getHealth() <= 0f) continue;
 
-            // Use closest point on the entity's bounding box, matching how
-            // the server anticheat measures reach.
+            // Skip whitelisted friends — whitelist check is purely local
+            if (friends.isFriend(target.getGameProfile().getName())) continue;
+
             Box box = target.getBoundingBox();
             double dx = Math.max(box.minX - eyePos.x, Math.max(0, eyePos.x - box.maxX));
             double dy = Math.max(box.minY - eyePos.y, Math.max(0, eyePos.y - box.maxY));
