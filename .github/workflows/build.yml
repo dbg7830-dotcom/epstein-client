@@ -2,23 +2,6 @@ name: Build MayheemTest
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag (e.g. v1.0.0, beta-1, test-build)'
-        required: true
-        default: 'dev-build'
-      release_name:
-        description: 'Release display name (e.g. Beta 1 - Reach Test)'
-        required: true
-        default: 'Dev Build'
-      prerelease:
-        description: 'Mark as pre-release?'
-        required: true
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 jobs:
   build:
@@ -60,19 +43,10 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build --no-daemon
 
-      - name: Delete existing release/tag if same tag exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete "${{ github.event.inputs.release_tag }}" --cleanup-tag --yes || true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          name: ${{ github.event.inputs.release_name }}
-          body: |
-            **Built from commit:** ${{ github.sha }}
-            **Triggered by:** ${{ github.actor }}
-          prerelease: ${{ github.event.inputs.prerelease }}
-          files: build/libs/MayheemTest-*.jar
+          name: MayheemTest-${{ github.sha }}
+          path: build/libs/MayheemTest-*.jar
+          if-no-files-found: error
+          retention-days: 7
