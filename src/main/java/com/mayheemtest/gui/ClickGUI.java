@@ -38,7 +38,7 @@ public class ClickGUI extends Screen {
 
     // ── Title — edit these two strings ─────────────────────────────────────
     private static final String TITLE_LEFT  = "§l§3Epstein Client";
-    private static final String TITLE_RIGHT = "§8| §7Stress Test";
+    private static final String TITLE_RIGHT = "§l| §9Molesting Test";
 
     // ── Layout ─────────────────────────────────────────────────────────────
     private static final int PANEL_X    = 20;
