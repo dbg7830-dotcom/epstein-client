@@ -16,11 +16,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * MixinGameRenderer — hooks ClientPlayerInteractionManager#attackEntity
  *
- * Confirmed from yarn 1.21.11+build.6 docs:
- * - attackEntity(PlayerEntity player, Entity target) exists, correct name
- * - PlayerMoveC2SPacket.LookAndOnGround exists
- * - horizontalCollision() is a METHOD not a field — was the bug
- * - sendPacket via MinecraftClient.getInstance().getNetworkHandler().sendPacket()
+ * Confirmed from yarn 1.21.11+build.6:
+ * - attackEntity(PlayerEntity, Entity) — correct name
+ * - PlayerMoveC2SPacket.LookAndOnGround(float yaw, float pitch,
+ *       boolean onGround, boolean horizontalCollision) — confirmed constructor
+ * - horizontalCollision — public boolean FIELD on Entity, no parentheses
+ * - sendPacket via getNetworkHandler().sendPacket()
  */
 @Mixin(ClientPlayerInteractionManager.class)
 public class MixinGameRenderer {
@@ -38,14 +39,13 @@ public class MixinGameRenderer {
 
         hitbox.armSpoof();
 
-        // Send spoofed look packet before attack
-        // horizontalCollision() is a method call — confirmed from docs
+        // horizontalCollision is a public field on Entity — no parentheses
         MinecraftClient.getInstance().getNetworkHandler().sendPacket(
             new PlayerMoveC2SPacket.LookAndOnGround(
                 localPlayer.getYaw()   + hitbox.spoofYaw,
                 localPlayer.getPitch() + hitbox.spoofPitch,
                 localPlayer.isOnGround(),
-                localPlayer.horizontalCollision()
+                localPlayer.horizontalCollision
             )
         );
     }
@@ -61,13 +61,12 @@ public class MixinGameRenderer {
         ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
         if (localPlayer == null) return;
 
-        // Restore real rotation immediately after
         MinecraftClient.getInstance().getNetworkHandler().sendPacket(
             new PlayerMoveC2SPacket.LookAndOnGround(
                 localPlayer.getYaw(),
                 localPlayer.getPitch(),
                 localPlayer.isOnGround(),
-                localPlayer.horizontalCollision()
+                localPlayer.horizontalCollision
             )
         );
 
