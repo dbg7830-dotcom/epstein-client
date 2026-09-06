@@ -6,61 +6,57 @@ import com.mayheemtest.module.setting.DoubleSetting;
 /**
  * HitboxModule
  *
- * When enabled, MixinGameRenderer injects an angular offset into the player's
- * reported yaw before each attack packet is sent, then immediately restores the
- * real yaw.  The server receives an attack whose look-vector does not intersect
- * the target's hitbox, which is exactly the condition Hitboxes.java flags.
+ * Spoofs the player's yaw/pitch at the exact moment attackEntity() fires,
+ * so the server receives an attack whose look-vector misses the target's
+ * hitbox. The spoof is applied and restored inside MixinAttackEntity which
+ * wraps ClientPlayerInteractionManager#attackEntity directly — this is the
+ * only reliable place since it's the method that actually sends the packet.
  *
- * Settings
- * ─────────
- * yawOffset   – Horizontal rotation offset in degrees (0 = no offset, 5 = very
- *               noticeable offset away from target).
- * pitchOffset – Vertical rotation offset in degrees.
- *
- * Both default to a small value so the first test is a near-miss that should
- * only barely trigger the check. Increase to confirm the check fires reliably.
+ * Level slider (1–5) maps to increasing angular offsets:
+ *   1 → ~2°   barely outside hitbox, hardest to detect
+ *   2 → ~5°   small miss, should flag intermittently
+ *   3 → ~10°  clear miss, reliable flag
+ *   4 → ~18°  obvious miss
+ *   5 → ~28°  extreme, guaranteed flag every hit
  */
 public class HitboxModule extends AbstractModule {
 
-    public final DoubleSetting yawOffset = addSetting(new DoubleSetting(
-            "Yaw offset",
-            "Degrees to rotate yaw away from target before attack. 0 = disabled.",
-            2.0, 0.0, 30.0, 0.5
+    // Angle offsets per level (degrees)
+    private static final float[] LEVEL_OFFSETS = { 2f, 5f, 10f, 18f, 28f };
+
+    public final DoubleSetting level = addSetting(new DoubleSetting(
+            "Level",
+            "1 = subtle miss,  5 = extreme miss",
+            1.0, 1.0, 5.0, 1.0
     ));
 
-    public final DoubleSetting pitchOffset = addSetting(new DoubleSetting(
-            "Pitch offset",
-            "Degrees to shift pitch before attack. 0 = disabled.",
-            0.0, 0.0, 30.0, 0.5
-    ));
-
-    // Mixin reads these to apply the spoof, then clears them after the packet.
-    // Volatile so changes are visible across threads.
+    // Read by MixinAttackEntity — volatile for cross-thread visibility
     public volatile float spoofYaw   = 0f;
     public volatile float spoofPitch = 0f;
     public volatile boolean active   = false;
 
     public HitboxModule() {
-        super("Hitbox", "Sends attacks with a rotated look vector to miss the hitbox");
+        super("Hitbox", "Attacks with look vector offset to miss hitbox");
     }
 
-    /**
-     * Called by MixinPlayerAttack just before sending an attack packet.
-     * Sets the spoof values the renderer mixin will return.
-     */
+    /** Called immediately before attackEntity() sends the packet. */
     public void armSpoof() {
-        spoofYaw   = (float) yawOffset.getValue();
-        spoofPitch = (float) pitchOffset.getValue();
+        int idx = Math.max(0, Math.min(4, (int) level.getValue() - 1));
+        float offset = LEVEL_OFFSETS[idx];
+        spoofYaw   = offset;
+        spoofPitch = offset * 0.5f; // pitch offset is smaller to feel natural
         active     = true;
     }
 
-    /**
-     * Called by MixinPlayerAttack immediately after the attack packet fires.
-     * Restores real look so movement is unaffected.
-     */
+    /** Called immediately after attackEntity() returns. */
     public void disarmSpoof() {
-        active = false;
+        active     = false;
         spoofYaw   = 0f;
         spoofPitch = 0f;
+    }
+
+    public float getLevelOffset() {
+        int idx = Math.max(0, Math.min(4, (int) level.getValue() - 1));
+        return LEVEL_OFFSETS[idx];
     }
 }
