@@ -1,16 +1,28 @@
 name: Build MayheemTest
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g. v1.0.0, beta-1, test-build)'
+        required: true
+        default: 'dev-build'
+      release_name:
+        description: 'Release display name (e.g. Beta 1 - Reach Test)'
+        required: true
+        default: 'Dev Build'
+      prerelease:
+        description: 'Mark as pre-release?'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
 
@@ -48,19 +60,19 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build --no-daemon
 
-      - name: Clean up existing Release and Tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Delete existing release/tag if same tag exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest --cleanup-tag --yes || true
+          gh release delete "${{ github.event.inputs.release_tag }}" --cleanup-tag --yes || true
 
-      - name: Create New Replacement Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "Latest Build"
-          body: "Auto-generated build from commit ${{ github.sha }}"
-          prerelease: true
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: ${{ github.event.inputs.release_name }}
+          body: |
+            **Built from commit:** ${{ github.sha }}
+            **Triggered by:** ${{ github.actor }}
+          prerelease: ${{ github.event.inputs.prerelease }}
           files: build/libs/MayheemTest-*.jar
