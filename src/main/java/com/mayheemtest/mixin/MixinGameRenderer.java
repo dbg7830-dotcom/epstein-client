@@ -3,63 +3,68 @@ package com.mayheemtest.mixin;
 import com.mayheemtest.module.ModuleManager;
 import com.mayheemtest.module.impl.HitboxModule;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.GameRenderer;
+import net.minecraft.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * MixinGameRenderer
+ * MixinGameRenderer (repurposed — now hooks attackEntity, not renderWorld)
  *
- * Hooks into GameRenderer#renderWorld (the outermost per-frame render call)
- * rather than the renamed updateTargetedEntity method.
+ * Wraps ClientPlayerInteractionManager#attackEntity which is the exact call
+ * that serialises and sends the UseEntity/Attack packet to the server.
  *
- * When HitboxModule is armed we shift yaw/pitch before the frame renders
- * (which includes the crosshair ray-cast that decides what entity is targeted),
- * then restore them immediately after so the camera never visually moves.
+ * By shifting yaw/pitch HERE, right before the packet is built, and restoring
+ * them on RETURN, the server sees an attack whose look-vector is offset by
+ * spoofYaw/spoofPitch degrees while the client camera never moves visually.
  *
- * yarn 1.21.11+build.6 name: method_3194  →  renderWorld(RenderTickCounter)
+ * This is the only correct injection point for hitbox spoofing — hooking
+ * renderWorld or the tick was unreliable because the rotation was read at a
+ * different time than the packet was constructed.
  */
-@Mixin(GameRenderer.class)
+@Mixin(ClientPlayerInteractionManager.class)
 public class MixinGameRenderer {
 
     @Inject(
-        method = "renderWorld",
+        method = "attackEntity",
         at = @At("HEAD")
     )
-    private void preLookSpoof(CallbackInfo ci) {
+    private void preAttackSpoof(net.minecraft.entity.player.PlayerEntity player,
+                                Entity target, CallbackInfo ci) {
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
 
         HitboxModule hitbox = mgr.hitbox;
-        if (!hitbox.isEnabled() || !hitbox.active) return;
+        if (!hitbox.isEnabled()) return;
 
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        if (player == null) return;
+        ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
+        if (localPlayer == null) return;
 
-        player.setYaw(player.getYaw() + hitbox.spoofYaw);
-        player.setPitch(player.getPitch() + hitbox.spoofPitch);
+        hitbox.armSpoof();
+        localPlayer.setYaw(localPlayer.getYaw() + hitbox.spoofYaw);
+        localPlayer.setPitch(localPlayer.getPitch() + hitbox.spoofPitch);
     }
 
     @Inject(
-        method = "renderWorld",
+        method = "attackEntity",
         at = @At("RETURN")
     )
-    private void postLookRestore(CallbackInfo ci) {
+    private void postAttackRestore(net.minecraft.entity.player.PlayerEntity player,
+                                   Entity target, CallbackInfo ci) {
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
 
         HitboxModule hitbox = mgr.hitbox;
         if (!hitbox.isEnabled() || !hitbox.active) return;
 
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        if (player == null) return;
+        ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
+        if (localPlayer == null) return;
 
-        player.setYaw(player.getYaw() - hitbox.spoofYaw);
-        player.setPitch(player.getPitch() - hitbox.spoofPitch);
-
+        localPlayer.setYaw(localPlayer.getYaw() - hitbox.spoofYaw);
+        localPlayer.setPitch(localPlayer.getPitch() - hitbox.spoofPitch);
         hitbox.disarmSpoof();
     }
 }
