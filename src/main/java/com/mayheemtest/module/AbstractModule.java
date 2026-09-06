@@ -2,6 +2,7 @@ package com.mayheemtest.module;
 
 import com.mayheemtest.module.setting.BooleanSetting;
 import com.mayheemtest.module.setting.DoubleSetting;
+import com.mayheemtest.util.ChatUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +17,6 @@ public abstract class AbstractModule {
     private final String description;
     private boolean enabled = false;
 
-    // Ordered lists so the GUI renders settings in declaration order
     protected final List<DoubleSetting> doubleSettings = new ArrayList<>();
     protected final List<BooleanSetting> booleanSettings = new ArrayList<>();
 
@@ -25,7 +25,7 @@ public abstract class AbstractModule {
         this.description = description;
     }
 
-    // ── Registration helpers ────────────────────────────────────────────────
+    // ── Registration helpers ───────────────────────────────────────────────
 
     protected DoubleSetting addSetting(DoubleSetting s) {
         doubleSettings.add(s);
@@ -41,6 +41,8 @@ public abstract class AbstractModule {
 
     public final void toggle() {
         enabled = !enabled;
+        // Client-side only chat notification — never sent to server
+        ChatUtil.sendToggle(name, enabled);
         if (enabled) onEnable(); else onDisable();
     }
 
@@ -48,10 +50,7 @@ public abstract class AbstractModule {
         if (v != enabled) toggle();
     }
 
-    /** Called once when the module is switched on. Override to reset state. */
     protected void onEnable() {}
-
-    /** Called once when the module is switched off. Override to clean up. */
     protected void onDisable() {}
 
     // ── Getters ────────────────────────────────────────────────────────────
