@@ -7,95 +7,82 @@ import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 
 import java.util.List;
 
 /**
- * ClickGUI
+ * ClickGUI — redesigned layout
  *
- * A clean, compact in-game panel listing every module.
+ * ┌─────────────────────────────────┐
+ * │  Epstein Client  |  Stress Test │  ← title bar
+ * ├─────────────────────────────────┤
+ * │ ● Reach                    ON   │  ← module name row
+ * │   Attacks beyond vanilla range  │  ← subtitle
+ * │   Distance  [══════╌╌╌╌]  3.50 │  ← slider
+ * ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤  ← separator
+ * │ ● Hitbox                   OFF  │
+ * │   ...                           │
+ * └─────────────────────────────────┘
  *
- * Layout (per module row)
- * ───────────────────────
- *  [ ● ]  Module name          description text
- *  ────────────────────────────────────────────
- *  Setting name    [━━━━━━━━━━━━━━━] 3.50
- *  ...
- *
- * Colours
- * ───────
- *  Panel bg        0xCC0D0D0F  (near-black, 80% opacity)
- *  Header bg       0xFF181820
- *  Enabled pill    0xFF4ADE80  (green)
- *  Disabled pill   0xFF6B7280  (gray)
- *  Slider track    0xFF2D2D3A
- *  Slider fill     0xFF818CF8  (indigo)
- *  Text primary    0xFFE2E8F0
- *  Text muted      0xFF94A3B8
- *
- * Interaction
- * ───────────
- *  Left-click module row  → toggle module on/off
- *  Left-drag slider       → adjust setting value
- *  Right-click slider     → reset to default (not implemented here – easy add)
- *  Esc / keybind          → close panel
- *
- * NOTE (1.21.11 API update)
- * ─────────────────────────
- *  In Minecraft 1.21.11, ParentElement/Element replaced the old
- *      mouseClicked(double, double, int)
- *      mouseDragged(double, double, int, double, double)
- *      mouseReleased(double, double, int)
- *  signatures with:
- *      mouseClicked(Click, boolean doubled)
- *      mouseDragged(Click, double offsetX, double offsetY)
- *      mouseReleased(Click)
- *  where Click.x() / Click.y() give cursor position and Click.button()
- *  gives the GLFW button code (0 = left, 1 = right, 2 = middle).
+ * ── Customising the title ──────────────────────────────────────────────────
+ * Edit TITLE_LEFT and TITLE_RIGHT below. You can use § colour codes:
+ *   §l = bold   §o = italic   §r = reset
+ *   §1 dark_blue  §3 dark_aqua  §9 blue  §b aqua  §f white
+ *   §8 dark_gray  §7 gray       §0 black
+ * Example:
+ *   TITLE_LEFT  = "§l§bMy Client"      → bold aqua "My Client"
+ *   TITLE_RIGHT = "§8| §7Beta"         → dark-gray pipe + gray "Beta"
  */
 public class ClickGUI extends Screen {
 
-    // ── Layout constants ────────────────────────────────────────────────────
-    private static final int PANEL_X       = 20;
-    private static final int PANEL_Y       = 20;
-    private static final int PANEL_W       = 280;
+    // ── Title — edit these two strings ─────────────────────────────────────
+    private static final String TITLE_LEFT  = "§l§3Epstein Client";
+    private static final String TITLE_RIGHT = "§8| §7Stress Test";
 
-    private static final int MODULE_H      = 32;   // height of the module header row
-    private static final int SETTING_H     = 22;   // height per setting row
-    private static final int SLIDER_W      = 110;  // width of the slider bar
-    private static final int SLIDER_H      = 4;
-    private static final int PADDING       = 10;
+    // ── Layout ─────────────────────────────────────────────────────────────
+    private static final int PANEL_X    = 20;
+    private static final int PANEL_Y    = 20;
+    private static final int PANEL_W    = 260;
+
+    private static final int TITLE_H    = 22;
+    private static final int MODULE_H   = 24;   // name row
+    private static final int SUBTITLE_H = 14;   // description row
+    private static final int SETTING_H  = 20;   // per-slider row
+    private static final int SEP_H      = 1;    // separator line
+
+    private static final int PADDING    = 10;
+    private static final int INDENT     = 14;   // indent for subtitle + sliders
+    private static final int SLIDER_W   = 100;
+    private static final int SLIDER_H   = 4;
 
     // ── Colours ─────────────────────────────────────────────────────────────
-    private static final int COL_PANEL     = 0xCC0D0D0F;
-    private static final int COL_HEADER    = 0xFF181820;
-    private static final int COL_ENABLED   = 0xFF4ADE80;
-    private static final int COL_DISABLED  = 0xFF6B7280;
-    private static final int COL_TRACK     = 0xFF2D2D3A;
-    private static final int COL_FILL      = 0xFF818CF8;
-    private static final int COL_TEXT      = 0xFFE2E8F0;
-    private static final int COL_MUTED     = 0xFF94A3B8;
-    private static final int COL_HOVER     = 0x22FFFFFF;
+    private static final int COL_PANEL        = 0xE0101014;
+    private static final int COL_TITLE        = 0xFF0D0D18;
+    private static final int COL_SEP          = 0xFF1E1E2E;
+    private static final int COL_PILL_ON      = 0xFF4ADE80;
+    private static final int COL_PILL_OFF     = 0xFF52525B;
+    private static final int COL_BADGE_ON_BG  = 0xFF14532D;
+    private static final int COL_BADGE_ON_FG  = 0xFF4ADE80;
+    private static final int COL_BADGE_OFF_BG = 0xFF27272A;
+    private static final int COL_BADGE_OFF_FG = 0xFF71717A;
+    private static final int COL_TRACK        = 0xFF27272A;
+    private static final int COL_FILL         = 0xFF6366F1;
+    private static final int COL_THUMB        = 0xFFE2E8F0;
+    private static final int COL_TEXT         = 0xFFE2E8F0;
+    private static final int COL_MUTED        = 0xFF71717A;
+    private static final int COL_HOVER        = 0x18FFFFFF;
 
-    // ── State ────────────────────────────────────────────────────────────────
-    private int totalPanelHeight = 0;
-
-    // Active slider drag state
+    // ── Drag state ──────────────────────────────────────────────────────────
     private DoubleSetting draggingSetting = null;
-    private int           draggingSliderX = 0; // left edge of the slider bar being dragged
-    private int           draggingSliderY = 0;
-
-    // Track which module rows are "hovered" for the hover tint
-    private int hoveredModule = -1;
+    private int           draggingSliderX = 0;
 
     public ClickGUI() {
-        super(Text.literal("MayheemTest"));
+        super(Text.literal("Epstein Client"));
     }
 
     @Override
-    public boolean shouldPause() {
-        return false; // keep the game running while the panel is open
-    }
+    public boolean shouldPause() { return false; }
 
     // ── Rendering ────────────────────────────────────────────────────────────
 
@@ -103,156 +90,149 @@ public class ClickGUI extends Screen {
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         List<AbstractModule> modules = ModuleManager.get().getModules();
 
-        // Calculate total panel height every frame (settings may be expanded)
-        totalPanelHeight = calculatePanelHeight(modules);
-
         // Panel background
-        ctx.fill(PANEL_X, PANEL_Y,
-                 PANEL_X + PANEL_W, PANEL_Y + totalPanelHeight,
-                 COL_PANEL);
+        int totalH = computeTotalHeight(modules);
+        ctx.fill(PANEL_X, PANEL_Y, PANEL_X + PANEL_W, PANEL_Y + totalH, COL_PANEL);
 
         // Title bar
-        ctx.fill(PANEL_X, PANEL_Y,
-                 PANEL_X + PANEL_W, PANEL_Y + 20,
-                 COL_HEADER);
+        ctx.fill(PANEL_X, PANEL_Y, PANEL_X + PANEL_W, PANEL_Y + TITLE_H, COL_TITLE);
         ctx.drawTextWithShadow(textRenderer,
-                Text.literal("MayheemTest  ·  AC Stress Test"),
-                PANEL_X + PADDING, PANEL_Y + 6, COL_MUTED);
+                Text.literal(TITLE_LEFT),
+                PANEL_X + PADDING, PANEL_Y + (TITLE_H - 8) / 2, 0xFFFFFFFF);
+        int rightW = textRenderer.getWidth(TITLE_RIGHT);
+        ctx.drawTextWithShadow(textRenderer,
+                Text.literal(TITLE_RIGHT),
+                PANEL_X + PANEL_W - PADDING - rightW, PANEL_Y + (TITLE_H - 8) / 2, 0xFFFFFFFF);
 
-        int curY = PANEL_Y + 20;
+        // Line below title
+        ctx.fill(PANEL_X, PANEL_Y + TITLE_H,
+                 PANEL_X + PANEL_W, PANEL_Y + TITLE_H + SEP_H, COL_SEP);
+
+        int curY = PANEL_Y + TITLE_H + SEP_H;
 
         for (int i = 0; i < modules.size(); i++) {
             AbstractModule mod = modules.get(i);
-            boolean hovered = isMouseOverModuleHeader(mouseX, mouseY, curY);
-            if (hovered) hoveredModule = i;
 
-            renderModuleRow(ctx, mod, curY, hovered, mouseX, mouseY);
+            // Hover tint on name row only
+            if (mouseX >= PANEL_X && mouseX <= PANEL_X + PANEL_W
+             && mouseY >= curY    && mouseY <= curY + MODULE_H) {
+                ctx.fill(PANEL_X, curY, PANEL_X + PANEL_W, curY + MODULE_H, COL_HOVER);
+            }
+
+            // ── Name row ────────────────────────────────────────────────────
+            // Pill
+            int pillColor = mod.isEnabled() ? COL_PILL_ON : COL_PILL_OFF;
+            int pillX = PANEL_X + PADDING;
+            int pillY = curY + (MODULE_H - 10) / 2;
+            ctx.fill(pillX, pillY, pillX + 3, pillY + 10, pillColor);
+
+            // Name
+            int nameColor = mod.isEnabled() ? 0xFFE2E8F0 : 0xFF71717A;
+            ctx.drawTextWithShadow(textRenderer,
+                    Text.literal(mod.getName()),
+                    pillX + 8, curY + (MODULE_H - 8) / 2, nameColor);
+
+            // ON/OFF badge
+            String badge  = mod.isEnabled() ? "ON" : "OFF";
+            int badgeBg   = mod.isEnabled() ? COL_BADGE_ON_BG  : COL_BADGE_OFF_BG;
+            int badgeFg   = mod.isEnabled() ? COL_BADGE_ON_FG  : COL_BADGE_OFF_FG;
+            int badgeW    = textRenderer.getWidth(badge) + 8;
+            int badgeX    = PANEL_X + PANEL_W - PADDING - badgeW;
+            int badgeY    = curY + (MODULE_H - 12) / 2;
+            ctx.fill(badgeX, badgeY, badgeX + badgeW, badgeY + 12, badgeBg);
+            ctx.drawTextWithShadow(textRenderer,
+                    Text.literal(badge), badgeX + 4, badgeY + 2, badgeFg);
+
             curY += MODULE_H;
 
-            // Render settings below the module header
+            // ── Subtitle ─────────────────────────────────────────────────────
+            ctx.drawTextWithShadow(textRenderer,
+                    Text.literal(mod.getDescription()),
+                    PANEL_X + INDENT, curY + (SUBTITLE_H - 8) / 2, COL_MUTED);
+            curY += SUBTITLE_H;
+
+            // ── Sliders ──────────────────────────────────────────────────────
             for (DoubleSetting s : mod.getDoubleSettings()) {
-                renderSliderRow(ctx, s, curY, mouseX, mouseY);
+                renderSlider(ctx, s, curY);
                 curY += SETTING_H;
+            }
+
+            // ── Separator ────────────────────────────────────────────────────
+            if (i < modules.size() - 1) {
+                ctx.fill(PANEL_X, curY, PANEL_X + PANEL_W, curY + SEP_H, COL_SEP);
+                curY += SEP_H;
             }
         }
 
-        // Draw the title bar label on top (so it's never occluded)
         super.render(ctx, mouseX, mouseY, delta);
     }
 
-    private void renderModuleRow(DrawContext ctx, AbstractModule mod, int y,
-                                 boolean hovered, int mouseX, int mouseY) {
-        // Hover tint
-        if (hovered) {
-            ctx.fill(PANEL_X, y, PANEL_X + PANEL_W, y + MODULE_H, COL_HOVER);
-        }
-
-        // Enabled indicator pill (4×12 rounded-ish rect — drawContext has no arc,
-        // so we fake it with two overlapping rects)
-        int pillColor = mod.isEnabled() ? COL_ENABLED : COL_DISABLED;
-        int pillX = PANEL_X + PADDING;
-        int pillY = y + (MODULE_H - 12) / 2;
-        ctx.fill(pillX, pillY, pillX + 4, pillY + 12, pillColor);
-
-        // Module name
-        ctx.drawTextWithShadow(textRenderer,
-                Text.literal(mod.getName()),
-                pillX + 10, y + 7, mod.isEnabled() ? COL_TEXT : COL_MUTED);
-
-        // Description (right-aligned, muted)
-        ctx.drawTextWithShadow(textRenderer,
-                Text.literal(mod.getDescription()),
-                PANEL_X + PANEL_W - PADDING - textRenderer.getWidth(mod.getDescription()),
-                y + 7, COL_MUTED);
-    }
-
-    private void renderSliderRow(DrawContext ctx, DoubleSetting s, int y,
-                                 int mouseX, int mouseY) {
-        int labelX  = PANEL_X + PADDING + 14;
-        int sliderX = PANEL_X + PANEL_W - PADDING - SLIDER_W - 50;
+    private void renderSlider(DrawContext ctx, DoubleSetting s, int y) {
+        int labelX  = PANEL_X + INDENT + 8;
+        int sliderX = PANEL_X + PANEL_W - PADDING - SLIDER_W - 46;
         int sliderY = y + (SETTING_H - SLIDER_H) / 2;
         int valueX  = sliderX + SLIDER_W + 6;
 
-        // Setting label
         ctx.drawTextWithShadow(textRenderer,
-                Text.literal(s.getName()),
-                labelX, y + (SETTING_H - 8) / 2, COL_MUTED);
+                Text.literal(s.getName()), labelX, y + (SETTING_H - 8) / 2, COL_MUTED);
 
-        // Slider track
-        ctx.fill(sliderX, sliderY,
-                 sliderX + SLIDER_W, sliderY + SLIDER_H,
-                 COL_TRACK);
+        ctx.fill(sliderX, sliderY, sliderX + SLIDER_W, sliderY + SLIDER_H, COL_TRACK);
 
-        // Slider fill
-        int fillW = (int) (SLIDER_W * s.getNormalized());
-        if (fillW > 0) {
-            ctx.fill(sliderX, sliderY,
-                     sliderX + fillW, sliderY + SLIDER_H,
-                     COL_FILL);
-        }
+        int fillW = Math.max(0, (int) (SLIDER_W * s.getNormalized()));
+        if (fillW > 0)
+            ctx.fill(sliderX, sliderY, sliderX + fillW, sliderY + SLIDER_H, COL_FILL);
 
-        // Slider thumb (small 2px-wide brighter bar at fill edge)
         int thumbX = sliderX + fillW;
-        ctx.fill(thumbX - 1, sliderY - 2,
-                 thumbX + 1, sliderY + SLIDER_H + 2,
-                 COL_TEXT);
+        ctx.fill(thumbX - 1, sliderY - 2, thumbX + 1, sliderY + SLIDER_H + 2, COL_THUMB);
 
-        // Value text
         ctx.drawTextWithShadow(textRenderer,
-                Text.literal(s.toString()),
-                valueX, y + (SETTING_H - 8) / 2, COL_TEXT);
+                Text.literal(s.toString()), valueX, y + (SETTING_H - 8) / 2, COL_TEXT);
     }
 
-    // ── Input handling (1.21.11 API) ─────────────────────────────────────────
-    //
-    // In 1.21.11, ParentElement replaced the old (double mouseX, double mouseY,
-    // int button) signatures with a Click record that bundles position + button
-    // info.  The button integer (GLFW button code) is accessed via click.button().
-    // 0 = left, 1 = right, 2 = middle.
-    //
-    // mouseClicked now also carries a boolean `doubled` for double-click detection.
-    // mouseDragged receives (Click, double offsetX, double offsetY) – the Click
-    // holds the *current* cursor position; offsetX/offsetY are the delta since
-    // the last drag event (we ignore them here and use click.x() directly).
-    // mouseReleased receives just the Click (no separate position args).
+    // ── Height helpers ────────────────────────────────────────────────────────
+
+    private int computeTotalHeight(List<AbstractModule> modules) {
+        int h = TITLE_H + SEP_H;
+        for (int i = 0; i < modules.size(); i++) {
+            h += MODULE_H + SUBTITLE_H + modules.get(i).getDoubleSettings().size() * SETTING_H;
+            if (i < modules.size() - 1) h += SEP_H;
+        }
+        return h;
+    }
+
+    // ── Input (1.21.11 Click API) ─────────────────────────────────────────────
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
-        // Only handle primary (left) button; delegate everything else to super.
         if (click.button() != 0) return super.mouseClicked(click, doubled);
 
         double mouseX = click.x();
         double mouseY = click.y();
 
         List<AbstractModule> modules = ModuleManager.get().getModules();
-        int curY = PANEL_Y + 20;
+        int curY = PANEL_Y + TITLE_H + SEP_H;
 
         for (AbstractModule mod : modules) {
-            // Check module header click → toggle
-            if (isMouseOverRect((int) mouseX, (int) mouseY,
-                    PANEL_X, curY, PANEL_W, MODULE_H)) {
-                // Only toggle if not clicking on a slider below
+            // Name row → toggle
+            if (inRect(mouseX, mouseY, PANEL_X, curY, PANEL_W, MODULE_H)) {
                 mod.toggle();
                 return true;
             }
-            curY += MODULE_H;
+            curY += MODULE_H + SUBTITLE_H;
 
-            // Check slider clicks
+            // Sliders
             for (DoubleSetting s : mod.getDoubleSettings()) {
-                int sliderX = PANEL_X + PANEL_W - PADDING - SLIDER_W - 50;
+                int sliderX = PANEL_X + PANEL_W - PADDING - SLIDER_W - 46;
                 int sliderY = curY + (SETTING_H - SLIDER_H) / 2 - 4;
-
-                if (isMouseOverRect((int) mouseX, (int) mouseY,
-                        sliderX, sliderY, SLIDER_W, SLIDER_H + 8)) {
+                if (inRect(mouseX, mouseY, sliderX, sliderY, SLIDER_W, SLIDER_H + 8)) {
                     draggingSetting = s;
                     draggingSliderX = sliderX;
-                    draggingSliderY = curY;
-                    float t = (float) ((mouseX - sliderX) / SLIDER_W);
-                    s.setNormalized(t);
+                    s.setNormalized((float) ((mouseX - sliderX) / SLIDER_W));
                     return true;
                 }
                 curY += SETTING_H;
             }
+            curY += SEP_H;
         }
 
         return super.mouseClicked(click, doubled);
@@ -261,8 +241,7 @@ public class ClickGUI extends Screen {
     @Override
     public boolean mouseDragged(Click click, double offsetX, double offsetY) {
         if (click.button() == 0 && draggingSetting != null) {
-            float t = (float) ((click.x() - draggingSliderX) / SLIDER_W);
-            draggingSetting.setNormalized(t);
+            draggingSetting.setNormalized((float) ((click.x() - draggingSliderX) / SLIDER_W));
             return true;
         }
         return super.mouseDragged(click, offsetX, offsetY);
@@ -274,22 +253,7 @@ public class ClickGUI extends Screen {
         return super.mouseReleased(click);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private int calculatePanelHeight(List<AbstractModule> modules) {
-        int h = 20; // title bar
-        for (AbstractModule mod : modules) {
-            h += MODULE_H;
-            h += mod.getDoubleSettings().size() * SETTING_H;
-        }
-        return h;
-    }
-
-    private boolean isMouseOverModuleHeader(int mx, int my, int rowY) {
-        return isMouseOverRect(mx, my, PANEL_X, rowY, PANEL_W, MODULE_H);
-    }
-
-    private boolean isMouseOverRect(int mx, int my, int x, int y, int w, int h) {
+    private boolean inRect(double mx, double my, int x, int y, int w, int h) {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 }
