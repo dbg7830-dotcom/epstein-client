@@ -10,10 +10,7 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 
 /**
- * ReachModule
- *
- * Attacks the nearest player within the configured distance.
- * Skips anyone on the FriendManager whitelist entirely.
+ * ReachModule — attacks the nearest non-whitelisted player within range.
  */
 public class ReachModule extends AbstractModule {
 
@@ -27,10 +24,6 @@ public class ReachModule extends AbstractModule {
         super("Reach", "Attacks entities beyond vanilla reach distance");
     }
 
-    /**
-     * Returns the nearest non-whitelisted PlayerEntity within range.
-     * Returns null if no valid target found.
-     */
     public PlayerEntity findTarget() {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return null;
@@ -47,8 +40,8 @@ public class ReachModule extends AbstractModule {
             if (target == mc.player) continue;
             if (target.isDead() || target.getHealth() <= 0f) continue;
 
-            // Skip whitelisted friends — whitelist check is purely local
-            if (friends.isFriend(target.getGameProfile().getName())) continue;
+            // 1.21.11: GameProfile.getName() → GameProfile.name()
+            if (friends.isFriend(target.getGameProfile().name())) continue;
 
             Box box = target.getBoundingBox();
             double dx = Math.max(box.minX - eyePos.x, Math.max(0, eyePos.x - box.maxX));
