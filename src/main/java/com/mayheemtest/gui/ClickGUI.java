@@ -2,61 +2,53 @@ package com.mayheemtest.gui;
 
 import com.mayheemtest.module.AbstractModule;
 import com.mayheemtest.module.ModuleManager;
+import com.mayheemtest.module.impl.ReachModule;
+import com.mayheemtest.module.setting.BooleanSetting;
 import com.mayheemtest.module.setting.DoubleSetting;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ClickGUI — redesigned layout
+ * ClickGUI
  *
- * ┌─────────────────────────────────┐
- * │  Epstein Client  |  Stress Test │  ← title bar
- * ├─────────────────────────────────┤
- * │ ● Reach                    ON   │  ← module name row
- * │   Attacks beyond vanilla range  │  ← subtitle
- * │   Distance  [══════╌╌╌╌]  3.50 │  ← slider
- * ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤  ← separator
- * │ ● Hitbox                   OFF  │
- * │   ...                           │
- * └─────────────────────────────────┘
+ * Renders modules with their settings. Boolean settings render as pill
+ * toggles. Double settings render as sliders.
  *
- * ── Customising the title ──────────────────────────────────────────────────
- * Edit TITLE_LEFT and TITLE_RIGHT below. You can use § colour codes:
- *   §l = bold   §o = italic   §r = reset
- *   §1 dark_blue  §3 dark_aqua  §9 blue  §b aqua  §f white
- *   §8 dark_gray  §7 gray       §0 black
- * Example:
- *   TITLE_LEFT  = "§l§bMy Client"      → bold aqua "My Client"
- *   TITLE_RIGHT = "§8| §7Beta"         → dark-gray pipe + gray "Beta"
+ * Special case: ReachModule's "Level" slider only renders when blatant
+ * mode is ON — keeps the panel clean and prevents text overlap.
+ *
+ * ── Customising the title ──
+ * Edit TITLE_LEFT / TITLE_RIGHT. § colour codes:
+ *   §l bold  §3 dark_aqua  §8 dark_gray  §7 gray  §f white  §r reset
  */
 public class ClickGUI extends Screen {
 
-    // ── Title — edit these two strings ─────────────────────────────────────
+    // ── Title ────────────────────────────────────────────────────────────────
     private static final String TITLE_LEFT  = "§l§3Epstein Client";
-    private static final String TITLE_RIGHT = "§l| §9Molesting Test";
+    private static final String TITLE_RIGHT = "§8| §7Stress Test";
 
-    // ── Layout ─────────────────────────────────────────────────────────────
+    // ── Layout ───────────────────────────────────────────────────────────────
     private static final int PANEL_X    = 20;
     private static final int PANEL_Y    = 20;
     private static final int PANEL_W    = 260;
-
     private static final int TITLE_H    = 22;
-    private static final int MODULE_H   = 24;   // name row
-    private static final int SUBTITLE_H = 14;   // description row
-    private static final int SETTING_H  = 20;   // per-slider row
-    private static final int SEP_H      = 1;    // separator line
-
+    private static final int MODULE_H   = 24;
+    private static final int SUBTITLE_H = 14;
+    private static final int SETTING_H  = 20;
+    private static final int SEP_H      = 1;
     private static final int PADDING    = 10;
-    private static final int INDENT     = 14;   // indent for subtitle + sliders
+    private static final int INDENT     = 14;
     private static final int SLIDER_W   = 100;
     private static final int SLIDER_H   = 4;
+    private static final int TOGGLE_W   = 28;
+    private static final int TOGGLE_H   = 10;
 
-    // ── Colours ─────────────────────────────────────────────────────────────
+    // ── Colours ──────────────────────────────────────────────────────────────
     private static final int COL_PANEL        = 0xE0101014;
     private static final int COL_TITLE        = 0xFF0D0D18;
     private static final int COL_SEP          = 0xFF1E1E2E;
@@ -72,8 +64,11 @@ public class ClickGUI extends Screen {
     private static final int COL_TEXT         = 0xFFE2E8F0;
     private static final int COL_MUTED        = 0xFF71717A;
     private static final int COL_HOVER        = 0x18FFFFFF;
+    private static final int COL_TOGGLE_ON    = 0xFF4ADE80;
+    private static final int COL_TOGGLE_OFF   = 0xFF3F3F46;
+    private static final int COL_TOGGLE_KNOB  = 0xFFE2E8F0;
 
-    // ── Drag state ──────────────────────────────────────────────────────────
+    // ── State ────────────────────────────────────────────────────────────────
     private DoubleSetting draggingSetting = null;
     private int           draggingSliderX = 0;
 
@@ -84,27 +79,58 @@ public class ClickGUI extends Screen {
     @Override
     public boolean shouldPause() { return false; }
 
-    // ── Rendering ────────────────────────────────────────────────────────────
+    // ── Visible settings helpers ──────────────────────────────────────────────
+
+    /**
+     * Returns the list of DoubleSetting that should actually render for a module.
+     * For ReachModule: hides the Level slider when blatant mode is OFF.
+     */
+    private List<DoubleSetting> visibleSliders(AbstractModule mod) {
+        List<DoubleSetting> all = mod.getDoubleSettings();
+        if (mod instanceof ReachModule reach) {
+            if (!reach.blatantMode.getValue()) {
+                // Hide Level slider — only show Distance
+                return all.stream()
+                        .filter(s -> !s.getName().equals("Level"))
+                        .toList();
+            }
+        }
+        return all;
+    }
+
+    private List<BooleanSetting> visibleToggles(AbstractModule mod) {
+        return mod.getBooleanSettings();
+    }
+
+    // ── Height ────────────────────────────────────────────────────────────────
+
+    private int computeTotalHeight(List<AbstractModule> modules) {
+        int h = TITLE_H + SEP_H;
+        for (int i = 0; i < modules.size(); i++) {
+            h += MODULE_H + SUBTITLE_H;
+            h += visibleSliders(modules.get(i)).size()  * SETTING_H;
+            h += visibleToggles(modules.get(i)).size()  * SETTING_H;
+            if (i < modules.size() - 1) h += SEP_H;
+        }
+        return h;
+    }
+
+    // ── Rendering ─────────────────────────────────────────────────────────────
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         List<AbstractModule> modules = ModuleManager.get().getModules();
-
-        // Panel background
         int totalH = computeTotalHeight(modules);
+
         ctx.fill(PANEL_X, PANEL_Y, PANEL_X + PANEL_W, PANEL_Y + totalH, COL_PANEL);
 
         // Title bar
         ctx.fill(PANEL_X, PANEL_Y, PANEL_X + PANEL_W, PANEL_Y + TITLE_H, COL_TITLE);
-        ctx.drawTextWithShadow(textRenderer,
-                Text.literal(TITLE_LEFT),
+        ctx.drawTextWithShadow(textRenderer, Text.literal(TITLE_LEFT),
                 PANEL_X + PADDING, PANEL_Y + (TITLE_H - 8) / 2, 0xFFFFFFFF);
         int rightW = textRenderer.getWidth(TITLE_RIGHT);
-        ctx.drawTextWithShadow(textRenderer,
-                Text.literal(TITLE_RIGHT),
+        ctx.drawTextWithShadow(textRenderer, Text.literal(TITLE_RIGHT),
                 PANEL_X + PANEL_W - PADDING - rightW, PANEL_Y + (TITLE_H - 8) / 2, 0xFFFFFFFF);
-
-        // Line below title
         ctx.fill(PANEL_X, PANEL_Y + TITLE_H,
                  PANEL_X + PANEL_W, PANEL_Y + TITLE_H + SEP_H, COL_SEP);
 
@@ -113,26 +139,22 @@ public class ClickGUI extends Screen {
         for (int i = 0; i < modules.size(); i++) {
             AbstractModule mod = modules.get(i);
 
-            // Hover tint on name row only
+            // Hover tint
             if (mouseX >= PANEL_X && mouseX <= PANEL_X + PANEL_W
              && mouseY >= curY    && mouseY <= curY + MODULE_H) {
                 ctx.fill(PANEL_X, curY, PANEL_X + PANEL_W, curY + MODULE_H, COL_HOVER);
             }
 
-            // ── Name row ────────────────────────────────────────────────────
-            // Pill
+            // ── Name row ──────────────────────────────────────────────────────
             int pillColor = mod.isEnabled() ? COL_PILL_ON : COL_PILL_OFF;
             int pillX = PANEL_X + PADDING;
             int pillY = curY + (MODULE_H - 10) / 2;
             ctx.fill(pillX, pillY, pillX + 3, pillY + 10, pillColor);
 
-            // Name
-            int nameColor = mod.isEnabled() ? 0xFFE2E8F0 : 0xFF71717A;
-            ctx.drawTextWithShadow(textRenderer,
-                    Text.literal(mod.getName()),
-                    pillX + 8, curY + (MODULE_H - 8) / 2, nameColor);
+            ctx.drawTextWithShadow(textRenderer, Text.literal(mod.getName()),
+                    pillX + 8, curY + (MODULE_H - 8) / 2,
+                    mod.isEnabled() ? 0xFFE2E8F0 : 0xFF71717A);
 
-            // ON/OFF badge
             String badge  = mod.isEnabled() ? "ON" : "OFF";
             int badgeBg   = mod.isEnabled() ? COL_BADGE_ON_BG  : COL_BADGE_OFF_BG;
             int badgeFg   = mod.isEnabled() ? COL_BADGE_ON_FG  : COL_BADGE_OFF_FG;
@@ -140,24 +162,29 @@ public class ClickGUI extends Screen {
             int badgeX    = PANEL_X + PANEL_W - PADDING - badgeW;
             int badgeY    = curY + (MODULE_H - 12) / 2;
             ctx.fill(badgeX, badgeY, badgeX + badgeW, badgeY + 12, badgeBg);
-            ctx.drawTextWithShadow(textRenderer,
-                    Text.literal(badge), badgeX + 4, badgeY + 2, badgeFg);
+            ctx.drawTextWithShadow(textRenderer, Text.literal(badge),
+                    badgeX + 4, badgeY + 2, badgeFg);
 
             curY += MODULE_H;
 
-            // ── Subtitle ─────────────────────────────────────────────────────
-            ctx.drawTextWithShadow(textRenderer,
-                    Text.literal(mod.getDescription()),
+            // ── Subtitle ──────────────────────────────────────────────────────
+            ctx.drawTextWithShadow(textRenderer, Text.literal(mod.getDescription()),
                     PANEL_X + INDENT, curY + (SUBTITLE_H - 8) / 2, COL_MUTED);
             curY += SUBTITLE_H;
 
-            // ── Sliders ──────────────────────────────────────────────────────
-            for (DoubleSetting s : mod.getDoubleSettings()) {
+            // ── Sliders (filtered) ────────────────────────────────────────────
+            for (DoubleSetting s : visibleSliders(mod)) {
                 renderSlider(ctx, s, curY);
                 curY += SETTING_H;
             }
 
-            // ── Separator ────────────────────────────────────────────────────
+            // ── Boolean toggles ───────────────────────────────────────────────
+            for (BooleanSetting s : visibleToggles(mod)) {
+                renderToggle(ctx, s, curY);
+                curY += SETTING_H;
+            }
+
+            // ── Separator ─────────────────────────────────────────────────────
             if (i < modules.size() - 1) {
                 ctx.fill(PANEL_X, curY, PANEL_X + PANEL_W, curY + SEP_H, COL_SEP);
                 curY += SEP_H;
@@ -173,9 +200,8 @@ public class ClickGUI extends Screen {
         int sliderY = y + (SETTING_H - SLIDER_H) / 2;
         int valueX  = sliderX + SLIDER_W + 6;
 
-        ctx.drawTextWithShadow(textRenderer,
-                Text.literal(s.getName()), labelX, y + (SETTING_H - 8) / 2, COL_MUTED);
-
+        ctx.drawTextWithShadow(textRenderer, Text.literal(s.getName()),
+                labelX, y + (SETTING_H - 8) / 2, COL_MUTED);
         ctx.fill(sliderX, sliderY, sliderX + SLIDER_W, sliderY + SLIDER_H, COL_TRACK);
 
         int fillW = Math.max(0, (int) (SLIDER_W * s.getNormalized()));
@@ -184,23 +210,26 @@ public class ClickGUI extends Screen {
 
         int thumbX = sliderX + fillW;
         ctx.fill(thumbX - 1, sliderY - 2, thumbX + 1, sliderY + SLIDER_H + 2, COL_THUMB);
-
-        ctx.drawTextWithShadow(textRenderer,
-                Text.literal(s.toString()), valueX, y + (SETTING_H - 8) / 2, COL_TEXT);
+        ctx.drawTextWithShadow(textRenderer, Text.literal(s.toString()),
+                valueX, y + (SETTING_H - 8) / 2, COL_TEXT);
     }
 
-    // ── Height helpers ────────────────────────────────────────────────────────
+    private void renderToggle(DrawContext ctx, BooleanSetting s, int y) {
+        int labelX  = PANEL_X + INDENT + 8;
+        int toggleX = PANEL_X + PANEL_W - PADDING - TOGGLE_W;
+        int toggleY = y + (SETTING_H - TOGGLE_H) / 2;
 
-    private int computeTotalHeight(List<AbstractModule> modules) {
-        int h = TITLE_H + SEP_H;
-        for (int i = 0; i < modules.size(); i++) {
-            h += MODULE_H + SUBTITLE_H + modules.get(i).getDoubleSettings().size() * SETTING_H;
-            if (i < modules.size() - 1) h += SEP_H;
-        }
-        return h;
+        ctx.drawTextWithShadow(textRenderer, Text.literal(s.getName()),
+                labelX, y + (SETTING_H - 8) / 2, COL_MUTED);
+
+        ctx.fill(toggleX, toggleY, toggleX + TOGGLE_W, toggleY + TOGGLE_H,
+                s.getValue() ? COL_TOGGLE_ON : COL_TOGGLE_OFF);
+
+        int knobX = s.getValue() ? toggleX + TOGGLE_W - TOGGLE_H : toggleX;
+        ctx.fill(knobX, toggleY, knobX + TOGGLE_H, toggleY + TOGGLE_H, COL_TOGGLE_KNOB);
     }
 
-    // ── Input (1.21.11 Click API) ─────────────────────────────────────────────
+    // ── Input ─────────────────────────────────────────────────────────────────
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
@@ -208,12 +237,11 @@ public class ClickGUI extends Screen {
 
         double mouseX = click.x();
         double mouseY = click.y();
-
         List<AbstractModule> modules = ModuleManager.get().getModules();
         int curY = PANEL_Y + TITLE_H + SEP_H;
 
         for (AbstractModule mod : modules) {
-            // Name row → toggle
+            // Name row → toggle module
             if (inRect(mouseX, mouseY, PANEL_X, curY, PANEL_W, MODULE_H)) {
                 mod.toggle();
                 return true;
@@ -221,7 +249,7 @@ public class ClickGUI extends Screen {
             curY += MODULE_H + SUBTITLE_H;
 
             // Sliders
-            for (DoubleSetting s : mod.getDoubleSettings()) {
+            for (DoubleSetting s : visibleSliders(mod)) {
                 int sliderX = PANEL_X + PANEL_W - PADDING - SLIDER_W - 46;
                 int sliderY = curY + (SETTING_H - SLIDER_H) / 2 - 4;
                 if (inRect(mouseX, mouseY, sliderX, sliderY, SLIDER_W, SLIDER_H + 8)) {
@@ -232,6 +260,19 @@ public class ClickGUI extends Screen {
                 }
                 curY += SETTING_H;
             }
+
+            // Boolean toggles
+            for (BooleanSetting s : visibleToggles(mod)) {
+                int toggleX = PANEL_X + PANEL_W - PADDING - TOGGLE_W;
+                int toggleY = curY + (SETTING_H - TOGGLE_H) / 2;
+                if (inRect(mouseX, mouseY, toggleX - 80, toggleY - 4,
+                           80 + TOGGLE_W, TOGGLE_H + 8)) {
+                    s.toggle();
+                    return true;
+                }
+                curY += SETTING_H;
+            }
+
             curY += SEP_H;
         }
 
