@@ -3,6 +3,8 @@ package com.mayheemtest.mixin;
 import com.mayheemtest.module.ModuleManager;
 import com.mayheemtest.module.impl.ReachModule;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerInteractionManager;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,30 +14,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * MixinPlayerAttack
  *
- * Fires on your click via wasPressed() — one call per physical click.
+ * Injects into ClientPlayerInteractionManager#attackEntity which vanilla
+ * calls naturally when you click. We never touch the keypress — vanilla
+ * handles the full click pipeline normally, then we piggyback on its call
+ * to also hit any extended-range targets.
  *
- * Mace smash fix:
- * ───────────────
- * Previously we always called attackEntity() on top of vanilla's own call.
- * The problem: when you're falling and click, vanilla processes your click
- * first and resets fallDistance to 0. Our second attackEntity() then fires
- * with fallDistance=0 so the server never sees a smash.
+ * This means:
+ * - Normal clicking works exactly as before — vanilla processes everything
+ * - Mace smash works — vanilla fires its own attackEntity with fallDistance
+ *   intact, we only add a second call for targets outside vanilla range
+ * - Crits, combos, attribute swaps — all unaffected, vanilla handles them
  *
- * Fix: if vanilla's crosshair is already on a valid target within vanilla
- * range (~3.0 blocks), skip our call entirely and let vanilla handle it.
- * We only call attackEntity() when vanilla WOULDN'T reach the target.
- * This means mace smashes at normal range are always handled by vanilla
- * (fallDistance intact), and reach extension only fires when the target
- * is genuinely outside vanilla range.
+ * We skip targets already within vanilla range since vanilla's own call
+ * already handled them.
  */
-@Mixin(MinecraftClient.class)
+@Mixin(ClientPlayerInteractionManager.class)
 public class MixinPlayerAttack {
 
-    @Inject(method = "tick", at = @At("HEAD"))
-    private void onTick(CallbackInfo ci) {
+    @Inject(method = "attackEntity", at = @At("RETURN"))
+    private void onAttackEntity(PlayerEntity player, Entity target, CallbackInfo ci) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.interactionManager == null || mc.world == null) return;
-        if (!mc.options.attackKey.wasPressed()) return;
+        if (mc.player == null || mc.world == null) return;
 
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
@@ -43,15 +42,17 @@ public class MixinPlayerAttack {
         ReachModule reach = mgr.reach;
         if (!reach.isEnabled()) return;
 
-        PlayerEntity target = reach.findTarget();
-        if (target == null) return;
+        // Find a target beyond vanilla range
+        PlayerEntity extendedTarget = reach.findTarget();
+        if (extendedTarget == null) return;
 
-        // If target is already within vanilla reach, let vanilla handle the
-        // attack — this preserves fallDistance for mace smash, crits, etc.
-        // We only extend when vanilla genuinely can't reach.
-        if (reach.isWithinVanillaRange(target)) return;
+        // Don't double-hit — if vanilla already hit this same target, skip
+        if (extendedTarget == target) return;
 
-        mc.interactionManager.attackEntity(mc.player, target);
+        // Only fire for targets genuinely outside vanilla range
+        if (reach.isWithinVanillaRange(extendedTarget)) return;
+
+        mc.interactionManager.attackEntity(mc.player, extendedTarget);
         mc.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
     }
 }
