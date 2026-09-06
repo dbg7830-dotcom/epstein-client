@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "MixinPlayerAttack",
-    "MixinGameRenderer"
+    "MixinGameRenderer",
+    "MixinChatScreen"
   ],
   "injectors": {
     "defaultRequire": 1
