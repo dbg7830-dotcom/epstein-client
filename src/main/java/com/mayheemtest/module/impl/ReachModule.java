@@ -13,26 +13,26 @@ import net.minecraft.util.math.Vec3d;
 /**
  * ReachModule
  *
- * Settings layout in GUI:
- * ─────────────────────────────────────────
- *  Distance    [══════════╌╌]  3.50
- *  Blatant mode            [ toggle ]
- *    Level     [══╌╌╌╌╌╌╌╌]  1        ← only visible when blatant mode ON
- * ─────────────────────────────────────────
+ * Exploit analysis of Reach.java:
  *
- * Distance slider — fine control, always visible.
+ * threshold    = 0.0005 blocks — check flags above this past maxReach
+ * cancelBuffer = after 1 flag, next 4 hits aggressively pre-cancelled
+ * isKnownInvalid pre-cancels at ~3.05 in real-time on packet receipt
+ * tickBetterReachCheckWithAngle runs AFTER a movement/look packet arrives
  *
- * Blatant mode OFF  → use distance as-is, subtle.
- * Blatant mode ON   → distance slider is overridden by the level preset:
- *   Level 1 = 3.2 blocks  subtle, near detection threshold
- *   Level 2 = 3.6 blocks  moderate
- *   Level 3 = 4.2 blocks  clear flag
- *   Level 4 = 5.0 blocks  obvious
- *   Level 5 = 6.0 blocks  extreme, guaranteed flag
+ * Blatant mode OFF  — distance slider, manual fine control
+ * Blatant mode ON   — level presets:
+ *   Level 1 = 3.04   just under the 3.05 pre-cancel threshold — subtle
+ *   Level 2 = 3.10   trips post-look check but not pre-cancel
+ *   Level 3 = 3.50   clear flag, both checks
+ *   Level 4 = 4.50   obvious
+ *   Level 5 = 6.00   extreme, guaranteed everything
  */
 public class ReachModule extends AbstractModule {
 
-    private static final double[] BLATANT_DISTANCES = { 3.2, 3.6, 4.2, 5.0, 6.0 };
+    // Level 1 sits just under isKnownInvalid threshold (~3.05)
+    // so attacks queue for post-look check but aren't pre-cancelled
+    private static final double[] BLATANT_DISTANCES = { 3.04, 3.10, 3.50, 4.50, 6.00 };
 
     public final DoubleSetting distance = addSetting(new DoubleSetting(
             "Distance",
@@ -48,7 +48,7 @@ public class ReachModule extends AbstractModule {
 
     public final DoubleSetting blatantLevel = addSetting(new DoubleSetting(
             "Level",
-            "1 = subtle  5 = guaranteed flag",
+            "1 = subtle (under pre-cancel)  5 = guaranteed flag",
             1.0, 1.0, 5.0, 1.0
     ));
 
@@ -56,7 +56,6 @@ public class ReachModule extends AbstractModule {
         super("Reach", "Extends your attack range");
     }
 
-    /** Effective range — blatant preset if blatant mode on, else raw slider. */
     public double getEffectiveRange() {
         if (blatantMode.getValue()) {
             int idx = Math.max(0, Math.min(4, (int) blatantLevel.getValue() - 1));
@@ -65,10 +64,6 @@ public class ReachModule extends AbstractModule {
         return distance.getValue();
     }
 
-    /**
-     * Returns nearest valid target within effective range.
-     * Returns null if no target found — caller handles vanilla fallback.
-     */
     public PlayerEntity findTarget() {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return null;
@@ -102,9 +97,8 @@ public class ReachModule extends AbstractModule {
     }
 
     /**
-     * Returns true if the target is already within vanilla reach (~3.0).
-     * Used by the mixin to avoid firing a second attackEntity when vanilla
-     * will already handle the hit — critical for mace smash to work correctly.
+     * True if target is within vanilla reach — we skip our call and let
+     * vanilla handle it so mace smash / crits fire with fallDistance intact.
      */
     public boolean isWithinVanillaRange(PlayerEntity target) {
         MinecraftClient mc = MinecraftClient.getInstance();
