@@ -1,5 +1,6 @@
 package com.mayheemtest;
 
+import com.mayheemtest.command.FriendManager;
 import com.mayheemtest.gui.ClickGUI;
 import com.mayheemtest.module.ModuleManager;
 import net.fabricmc.api.ClientModInitializer;
@@ -10,46 +11,31 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * MayheemTestMod – Fabric client entry point.
- *
- * Responsibilities
- * ────────────────
- * 1. Instantiate the ModuleManager (which registers all modules).
- * 2. Register the GUI keybind (Right Shift by default).
- * 3. Open the ClickGUI when the keybind is pressed.
- *
- * NOTE (1.21.11 API update)
- * ─────────────────────────
- *  In Minecraft 1.21.11, the KeyBinding constructor's category parameter
- *  changed from a raw String to a KeyBinding.Category record (wrapping an
- *  Identifier).  Use KeyBinding.Category.create(Identifier) to obtain one,
- *  or new KeyBinding.Category(Identifier) directly.
- */
 public class MayheemTestMod implements ClientModInitializer {
 
     public static ModuleManager moduleManager;
-
     private static KeyBinding guiKeybind;
 
-    // Custom keybind category for this mod (1.21.11: Category is a record, not a String)
     public static final KeyBinding.Category CATEGORY =
             KeyBinding.Category.create(Identifier.of("mayheemtest", "general"));
 
     @Override
     public void onInitializeClient() {
-        // 1. Boot the module system
+        // Load persisted friends list before anything else
+        FriendManager.get().load();
+
+        // Boot module system
         moduleManager = new ModuleManager();
 
-        // 2. Register GUI keybind – Right Shift
+        // Register GUI keybind — Right Shift
         guiKeybind = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                "key.mayheemtest.gui",          // translation key
+                "key.mayheemtest.gui",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_RIGHT_SHIFT,
-                CATEGORY                        // category shown in controls menu
+                CATEGORY
         ));
 
-        // 3. Open GUI on keybind press
+        // Open/close GUI on keybind press
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (guiKeybind.wasPressed()) {
                 if (client.currentScreen == null) {
