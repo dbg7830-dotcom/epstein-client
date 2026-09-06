@@ -14,30 +14,13 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * MixinGameRenderer (hooks ClientPlayerInteractionManager#attackEntity)
+ * MixinGameRenderer — hooks ClientPlayerInteractionManager#attackEntity
  *
- * Exploit analysis of Reach.java for hitbox bypass:
- *
- * The HITBOX result fires when minDistance == Double.MAX_VALUE, meaning
- * the ray from eye position never intersects the target box at all.
- *
- * The check uses multiple look vectors:
- *   - player.yaw / player.pitch       (current)
- *   - player.lastYaw / player.pitch   (1.8+)
- *   - player.lastYaw / player.lastPitch (1.9+)
- *
- * To trigger HITBOX reliably, ALL of these vectors must miss the hitbox.
- * This means a small offset isn't enough at low levels — the check will
- * find one of the other vectors that still hits.
- *
- * Strategy:
- * - Send a look packet with offset rotation before the attack
- * - The offset must be large enough that even with lastYaw/lastPitch
- *   uncertainty window, none of the vectors intersect
- * - Level 1: small offset, may still be caught by lastYaw fallback
- * - Level 5: large enough that all vectors miss, guaranteed HITBOX flag
- *
- * After the attack we immediately send real rotation back.
+ * Confirmed from yarn 1.21.11+build.6 docs:
+ * - attackEntity(PlayerEntity player, Entity target) exists, correct name
+ * - PlayerMoveC2SPacket.LookAndOnGround exists
+ * - horizontalCollision() is a METHOD not a field — was the bug
+ * - sendPacket via MinecraftClient.getInstance().getNetworkHandler().sendPacket()
  */
 @Mixin(ClientPlayerInteractionManager.class)
 public class MixinGameRenderer {
@@ -55,13 +38,14 @@ public class MixinGameRenderer {
 
         hitbox.armSpoof();
 
-        // Send spoofed look packet — server uses this for the attack ray
-        localPlayer.networkHandler.sendPacket(
+        // Send spoofed look packet before attack
+        // horizontalCollision() is a method call — confirmed from docs
+        MinecraftClient.getInstance().getNetworkHandler().sendPacket(
             new PlayerMoveC2SPacket.LookAndOnGround(
                 localPlayer.getYaw()   + hitbox.spoofYaw,
                 localPlayer.getPitch() + hitbox.spoofPitch,
                 localPlayer.isOnGround(),
-                localPlayer.horizontalCollision
+                localPlayer.horizontalCollision()
             )
         );
     }
@@ -78,12 +62,12 @@ public class MixinGameRenderer {
         if (localPlayer == null) return;
 
         // Restore real rotation immediately after
-        localPlayer.networkHandler.sendPacket(
+        MinecraftClient.getInstance().getNetworkHandler().sendPacket(
             new PlayerMoveC2SPacket.LookAndOnGround(
                 localPlayer.getYaw(),
                 localPlayer.getPitch(),
                 localPlayer.isOnGround(),
-                localPlayer.horizontalCollision
+                localPlayer.horizontalCollision()
             )
         );
 
