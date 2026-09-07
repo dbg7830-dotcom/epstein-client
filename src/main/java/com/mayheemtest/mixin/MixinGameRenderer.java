@@ -14,14 +14,17 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * MixinGameRenderer — hooks ClientPlayerInteractionManager#attackEntity
+ * Hooks attackEntity on ClientPlayerInteractionManager.
  *
- * Confirmed from yarn 1.21.11+build.6:
- * - attackEntity(PlayerEntity, Entity) — correct name
- * - PlayerMoveC2SPacket.LookAndOnGround(float yaw, float pitch,
- *       boolean onGround, boolean horizontalCollision) — confirmed constructor
- * - horizontalCollision — public boolean FIELD on Entity, no parentheses
- * - sendPacket via getNetworkHandler().sendPacket()
+ * Sends a LookAndOnGround packet with spoofed yaw/pitch before the attack,
+ * then immediately restores real rotation after.
+ *
+ * The Reach check reads player.yaw / player.lastYaw / player.lastPitch
+ * from the most recent movement packets. By sending a look packet first,
+ * we set what the server sees as the active look direction at attack time.
+ *
+ * Level 3+ offsets are large enough to beat all three look vectors the
+ * check tests, guaranteeing minDistance == MAX_VALUE → HITBOX flag.
  */
 @Mixin(ClientPlayerInteractionManager.class)
 public class MixinGameRenderer {
@@ -30,22 +33,21 @@ public class MixinGameRenderer {
     private void preAttackSpoof(PlayerEntity player, Entity target, CallbackInfo ci) {
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
-
         HitboxModule hitbox = mgr.hitbox;
         if (!hitbox.isEnabled()) return;
 
-        ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
-        if (localPlayer == null) return;
+        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        if (p == null) return;
 
         hitbox.armSpoof();
 
-        // horizontalCollision is a public field on Entity — no parentheses
+        // horizontalCollision is a public boolean field on Entity (confirmed yarn 1.21.11+build.6)
         MinecraftClient.getInstance().getNetworkHandler().sendPacket(
             new PlayerMoveC2SPacket.LookAndOnGround(
-                localPlayer.getYaw()   + hitbox.spoofYaw,
-                localPlayer.getPitch() + hitbox.spoofPitch,
-                localPlayer.isOnGround(),
-                localPlayer.horizontalCollision
+                p.getYaw() + hitbox.spoofYaw,
+                p.getPitch() + hitbox.spoofPitch,
+                p.isOnGround(),
+                p.horizontalCollision
             )
         );
     }
@@ -54,19 +56,19 @@ public class MixinGameRenderer {
     private void postAttackRestore(PlayerEntity player, Entity target, CallbackInfo ci) {
         ModuleManager mgr = ModuleManager.get();
         if (mgr == null) return;
-
         HitboxModule hitbox = mgr.hitbox;
         if (!hitbox.isEnabled() || !hitbox.active) return;
 
-        ClientPlayerEntity localPlayer = MinecraftClient.getInstance().player;
-        if (localPlayer == null) return;
+        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        if (p == null) return;
 
+        // Restore real rotation
         MinecraftClient.getInstance().getNetworkHandler().sendPacket(
             new PlayerMoveC2SPacket.LookAndOnGround(
-                localPlayer.getYaw(),
-                localPlayer.getPitch(),
-                localPlayer.isOnGround(),
-                localPlayer.horizontalCollision
+                p.getYaw(),
+                p.getPitch(),
+                p.isOnGround(),
+                p.horizontalCollision
             )
         );
 
